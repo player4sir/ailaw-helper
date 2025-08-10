@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, BookOpen, ExternalLink, Calendar, Tag, Filter, ChevronDown, Star, Bookmark } from 'lucide-react';
+
 import { chatOnce } from '../lib/aiClient';
 
 const LawQuery: React.FC = () => {
@@ -187,13 +187,13 @@ JSON格式示例：
       {/* 搜索栏 - 移动端优化 */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
         <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          {/* 纯文字风格：移除放大镜图标 */}
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyPress={handleKeyPress}
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
+            className="w-full pl-3 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
             placeholder="输入法律关键词，如：违约责任、损害赔偿、诉讼时效..."
           />
         </div>
@@ -204,9 +204,8 @@ JSON格式示例：
             onClick={() => setShowFilters(!showFilters)}
             className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-800"
           >
-            <Filter className="w-4 h-4" />
             <span>筛选条件</span>
-            <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            <span className={`text-xs px-1.5 py-0.5 rounded border ${showFilters ? 'bg-gray-100 text-gray-700' : 'text-gray-400'}`}>{showFilters ? '收起' : '展开'}</span>
           </button>
           <span className="text-xs text-gray-500">
             {selectedCategory !== 'all' && `已选择: ${categories.find(c => c.id === selectedCategory)?.name}`}
@@ -252,7 +251,6 @@ JSON格式示例：
             </>
           ) : (
             <>
-              <Search className="w-4 h-4" />
               <span className="text-sm">搜索法条</span>
             </>
           )}
@@ -269,7 +267,6 @@ JSON格式示例：
                 找到 {searchResults.length} 条相关法条
               </span>
               <div className="flex items-center space-x-1 text-xs text-gray-500">
-                <Star className="w-3 h-3" />
                 <span>按相关度排序</span>
               </div>
             </div>
@@ -283,13 +280,11 @@ JSON格式示例：
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
-                      <BookOpen className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                       <h4 className="font-semibold text-gray-800 text-sm line-clamp-1">{law.title}</h4>
                     </div>
                     <span className="text-sm font-medium text-emerald-600">{law.article}</span>
                   </div>
                   <button className="flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 flex-shrink-0 ml-2">
-                    <ExternalLink className="w-3 h-3" />
                     <span>原文</span>
                   </button>
                 </div>
@@ -298,15 +293,13 @@ JSON格式示例：
                 <div className="flex items-center justify-between text-xs text-gray-500">
                   <div className="flex items-center space-x-3">
                     <div className="flex items-center space-x-1">
-                      <Calendar className="w-3 h-3" />
-                      <span>{law.effectDate}</span>
-                    </div>
+                        <span>生效日期：{law.effectDate}</span>
+                      </div>
                     <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
                       {law.relevance}%
                     </span>
                   </div>
                   <button className="flex items-center space-x-1 text-gray-400 hover:text-gray-600">
-                    <Bookmark className="w-3 h-3" />
                     <span>收藏</span>
                   </button>
                 </div>
@@ -365,7 +358,7 @@ JSON格式示例：
                 {/* 标签和分类 */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <Tag className="w-3 h-3 text-gray-400" />
+                    <span className="text-xs text-gray-400">标签</span>
                     <div className="flex flex-wrap gap-1">
                       {law.tags.slice(0, 3).map((tag: string, index: number) => (
                         <span
@@ -394,7 +387,7 @@ JSON格式示例：
       {/* 无结果状态 */}
       {searchResults.length === 0 && searchQuery && !isSearching && (
         <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-          <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <div className="w-12 h-12 text-gray-300 mx-auto mb-3 rounded-full bg-gray-100"></div>
           <h3 className="text-base font-medium text-gray-800 mb-2">未找到相关法条</h3>
           <p className="text-sm text-gray-600 mb-4">请尝试使用其他关键词或调整搜索条件</p>
           <button
@@ -410,7 +403,7 @@ JSON格式示例：
       {searchResults.length === 0 && !searchQuery && (
         <div className="bg-white rounded-xl shadow-sm p-8 text-center">
           <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <BookOpen className="w-8 h-8 text-emerald-600" />
+            <span className="text-emerald-600 text-lg">Law</span>
           </div>
           <h3 className="text-base font-medium text-gray-800 mb-2">AI法条研究助手</h3>
           <p className="text-sm text-gray-600 mb-4">输入法律关键词，获得专业的条文检索和实务指导</p>

@@ -1,8 +1,17 @@
 import React, { useState } from 'react';
-import { Download, Edit3, Eye, FileText, Check, Clock } from 'lucide-react';
+
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { chatOnce } from '../lib/aiClient';
+import { useNavigate } from 'react-router-dom';
+import { renderToStaticMarkup } from 'react-dom/server';
+// 规范校验工具模块化：集中于独立文件，便于扩展与复用
+import { buildComplianceReport, autofillMissingSections, getCaseTypeGuidance, type ComplianceItem } from '../lib/documentCompliance';
+import { exportToDocx } from '../lib/exporters';
 
 const DocumentGenerator: React.FC = () => {
+    const navigate = useNavigate();
+
     const [selectedTemplate, setSelectedTemplate] = useState('');
     const [documentContent, setDocumentContent] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
@@ -15,6 +24,22 @@ const DocumentGenerator: React.FC = () => {
         case_number: '',
         case_details: ''
     });
+
+    // 结果全屏页开关 + 高级选项
+
+    // 中文注释：showResultPage 控制是否以全屏独立页展示生成结果；adv 为生成偏好
+    const [showResultPage, setShowResultPage] = useState(false);
+    const [adv, setAdv] = useState({
+        citeLaw: true,        // 是否引用具体法律条文与司法解释
+        citeCases: true,      // 是否引用典型案例/指导性案例
+        tone: '正式',         // 语言风格：正式/稳健/通俗
+        includeEvidence: true // 是否自动生成证据清单
+    });
+
+    // 规范检查结果状态
+    const [compliance, setCompliance] = useState<ComplianceItem[] | null>(null);
+
+
 
     const templates = [
         {
@@ -93,6 +118,11 @@ const DocumentGenerator: React.FC = () => {
             alert('请至少填写原告或被告姓名');
             return;
         }
+        // 中文注释：新增案件详情必填校验，避免生成空洞文书
+        if (!documentInfo.case_details || !documentInfo.case_details.trim()) {
+            alert('请完善“案件详情”，以便生成更准确、规范的法律文书');
+            return;
+        }
 
         setIsGenerating(true);
 
@@ -109,6 +139,9 @@ const DocumentGenerator: React.FC = () => {
 
             // 根据不同文书类型构建专业提示词
             const getDocumentPrompt = (templateId: string) => {
+                // 中文注释：根据高级选项组合生成要求说明，提升生成质量
+                const advDirectives = `\n【生成要求加固】\n${adv.citeLaw ? '- 请引用具体法律条文与相关司法解释；\n' : ''}${adv.citeCases ? '- 如有，可引用典型案例或指导性案例（简要说明关联）；\n' : ''}- 语言风格：${adv.tone || '正式'}；\n${adv.includeEvidence ? '- 请附带“证据材料清单”章节，包含编号、名称、证明目的；' : ''}`;
+
                 const baseInfo = `
 【当事人信息】
 原告：${documentInfo.plaintiff || '（请完善）'}
@@ -118,7 +151,8 @@ const DocumentGenerator: React.FC = () => {
 案件编号：${documentInfo.case_number || '（待分配）'}
 
 【案件详情】
-${documentInfo.case_details || '（请提供案件详细情况，包括争议事实、时间节点、涉及金额、证据情况等，以便生成更准确的法律文书）'}`;
+${documentInfo.case_details}
+${advDirectives}`;
 
                 switch (templateId) {
                     case 'civil_complaint':
@@ -312,6 +346,14 @@ ${documentInfo.case_details || '（请提供案件详细情况，包括争议事
 
             if (aiResponse) {
                 setDocumentContent(aiResponse);
+                // 生成成功：自动跳转结果页（移动端友好）
+                const tname = templates.find(t => t.id === selectedTemplate)?.name || '法律文书';
+                sessionStorage.setItem('doc_title', tname);
+                sessionStorage.setItem('doc_content', aiResponse);
+                sessionStorage.setItem('doc_template_id', selectedTemplate);
+                sessionStorage.setItem('doc_case_type', documentInfo.case_type || '');
+                // 使用路由跳转，避免弹窗策略影响
+                navigate('/documents/result');
             } else {
                 throw new Error('AI生成失败');
             }
@@ -327,6 +369,8 @@ ${documentInfo.case_details || '（请提供案件详细情况，包括争议事
         }
     };
 
+    // 生成降级模板内容（当AI生成失败时使用）
+    // 中文注释：根据选择的模板生成一个基础的示例文书，确保导出时不会为空
     const generateFallbackContent = () => {
         const templateInfo = templates.find(t => t.id === selectedTemplate);
         const templateName = templateInfo?.name || '法律文书';
@@ -338,7 +382,7 @@ ${documentInfo.case_details || '（请提供案件详细情况，包括争议事
 住址：北京市朝阳区xxx路xxx号
 联系电话：138xxxxxxxx
 
-被告：${documentInfo.defendant || '李四'}，女，汉族，1985年3月15日出生  
+被告：${documentInfo.defendant || '李四'}，女，汉族，1985年3月15日出生
 住址：北京市海淀区xxx路xxx号
 联系电话：139xxxxxxxx
 
@@ -363,7 +407,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
             return `${templateName}
 
 答辩人：${documentInfo.defendant || '李四'}，女，汉族，1985年3月15日出生
-住址：北京市海淀区xxx路xxx号  
+住址：北京市海淀区xxx路xxx号
 联系电话：139xxxxxxxx
 
 针对${documentInfo.plaintiff || '张三'}诉本人xxx纠纷一案（案号：${documentInfo.case_number || '(2024)京xxxx民初xxx号'}），现提出如下答辩意见：
@@ -406,6 +450,37 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
         }
     };
 
+    // 已移除简易 Markdown -> HTML 转换函数，统一使用 ReactMarkdown 渲染富文本
+
+    // 富文本格式化函数（仅用于导出PDF的HTML格式化）
+    // 中文注释：为避免“先使用后定义”的运行时错误，将此函数上移至 exportToPDF 之前
+    const formatDocumentContentForExport = (content: string) => {
+        if (!content) return '';
+        return content
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/^([^\n]*(?:起诉状|答辩状|上诉状|反诉状|协议书|清单)[^\n]*)/gm,'<h1 class="document-title">$1</h1>')
+            .replace(/^(原告|被告|上诉人|被上诉人|申请人|被申请人|甲方|乙方)：([^\n]+)/gm,'<div class="party-info"><strong class="party-label">$1：</strong><span class="party-details">$2</span></div>')
+            .replace(/^([一二三四五六七八九十]+、[^\n]+)/gm,'<h2 class="section-title">$1</h2>')
+            .replace(/^（([一二三四五六七八九十]+)）([^\n]+)/gm,'<h3 class="subsection-title">（$1）$2</h3>')
+            .replace(/^(\d+\.[^\n]+)/gm,'<div class="numbered-item">$1</div>')
+            .replace(/(《[^》]+》[^，。；]*条[^，。；]*)/g,'<span class="legal-reference">$1</span>')
+            .replace(/(人民币\s*[\d,，]+(?:\.\d+)?(?:\s*元|万元|亿元)?)/g,'<span class="amount">$1</span>')
+            .replace(/(\d{4}年\d{1,2}月\d{1,2}日)/g,'<span class="date">$1</span>')
+            .replace(/^(此致)$/gm, '<div class="closing">$1</div>')
+            .replace(/^[^\n]*人民法院[^\n]*$/gm, '<div class="court-name">$&</div>')
+            .replace(/^(起诉人|答辩人|上诉人|申请人|代理人)：([^\n]+)$/gm,'<div class="signature-line"><span class="signature-label">$1：</span><span class="signature-name">$2</span></div>')
+            .replace(/^(日期：[^\n]+)$/gm, '<div class="signature-date">$1</div>')
+            .replace(/\n\n+/g, '</p><p class="paragraph">')
+            .replace(/\n/g, '<br>')
+            .replace(/^/, '<p class="paragraph">')
+            .replace(/$/, '</p>')
+            .replace(/<p class="paragraph"><\/p>/g, '')
+            .replace(/<p class="paragraph"><br><\/p>/g, '');
+    };
+
+
     const exportToPDF = () => {
         if (!documentContent) return;
 
@@ -413,32 +488,18 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
         const win = window.open('', '_blank');
         if (!win) return;
 
-        // 富文本格式化处理
-        const formatContent = (content: string) => {
-            return content
-                // HTML转义
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                // 处理标题（以"一、二、三、"开头的行）
-                .replace(/^([一二三四五六七八九十]+、[^\n]+)/gm, '<h3 class="section-title">$1</h3>')
-                // 处理子标题（以"（一）（二）"开头的行）
-                .replace(/^（[一二三四五六七八九十]+）([^\n]+)/gm, '<h4 class="sub-title">（$1）$2</h4>')
-                // 处理编号列表（以"1."、"2."开头的行）
-                .replace(/^(\d+\.[^\n]+)/gm, '<div class="numbered-item">$1</div>')
-                // 处理段落（连续的非空行）
-                .replace(/\n\n+/g, '</p><p class="paragraph">')
-                // 处理单个换行
-                .replace(/\n/g, '<br>')
-                // 包装在段落中
-                .replace(/^/, '<p class="paragraph">')
-                .replace(/$/, '</p>')
-                // 清理空段落
-                .replace(/<p class="paragraph"><\/p>/g, '')
-                .replace(/<p class="paragraph"><br><\/p>/g, '');
-        };
-
-        const formattedContent = formatContent(documentContent);
+        // 富文本格式化处理（导出PDF专用）：优先 Markdown 转 HTML，其次回退 HTML，最后纯文本转 <br>
+        const fallbackContent = formatDocumentContentForExport(documentContent);
+        // 优先使用 ReactMarkdown 渲染为静态 HTML，保证富文本（标题/列表/粗斜体/链接等）
+        const mdHtml = renderToStaticMarkup(
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{documentContent}</ReactMarkdown>
+        );
+        const escaped = documentContent
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\n/g, '<br>');
+        const htmlBody = (mdHtml && mdHtml.trim()) ? mdHtml : ((fallbackContent && fallbackContent.trim()) ? fallbackContent : escaped);
 
         win.document.write(`<!DOCTYPE html>
 <html lang="zh-CN">
@@ -448,19 +509,19 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
     <title>${title}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-        
+
         @page {
             size: A4;
             margin: 2.5cm 2cm;
             -webkit-print-color-adjust: exact;
             color-adjust: exact;
         }
-        
+
         * {
             box-sizing: border-box;
         }
-        
-        body { 
+
+        body {
             font-family: 'Noto Serif SC', 'SimSun', '宋体', 'Microsoft YaHei', serif;
             line-height: 1.8;
             margin: 0;
@@ -473,30 +534,30 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
             -moz-osx-font-smoothing: grayscale;
             font-feature-settings: "kern" 1;
         }
-        
-        h1 { 
-            text-align: center; 
-            margin: 0 0 40px 0; 
+
+        h1 {
+            text-align: center;
+            margin: 0 0 40px 0;
             font-size: 22px;
             font-weight: 600;
             letter-spacing: 2px;
             border-bottom: 2px solid #000;
             padding-bottom: 15px;
         }
-        
+
         .content {
             text-align: justify;
             text-justify: inter-ideograph;
             word-break: break-word;
             hyphens: auto;
         }
-        
+
         .paragraph {
             margin: 15px 0;
             text-indent: 2em;
             line-height: 1.8;
         }
-        
+
         .section-title {
             font-size: 16px;
             font-weight: 600;
@@ -505,7 +566,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
             text-indent: 0;
             line-height: 1.6;
         }
-        
+
         .sub-title {
             font-size: 15px;
             font-weight: 500;
@@ -514,58 +575,58 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
             text-indent: 1em;
             line-height: 1.6;
         }
-        
+
         .numbered-item {
             margin: 8px 0;
             text-indent: 2em;
             line-height: 1.7;
         }
-        
+
         .signature-section {
             margin-top: 50px;
             text-align: right;
             line-height: 2;
         }
-        
+
         .date-line {
             margin-top: 30px;
             text-align: right;
         }
-        
+
         @media print {
-            body { 
-                margin: 0; 
+            body {
+                margin: 0;
                 padding: 0;
                 font-size: 14px;
                 -webkit-print-color-adjust: exact;
                 color-adjust: exact;
             }
-            
-            .no-print { 
-                display: none !important; 
+
+            .no-print {
+                display: none !important;
             }
-            
+
             h1 {
                 font-size: 20px;
                 margin-bottom: 30px;
             }
-            
+
             .section-title {
                 font-size: 15px;
                 page-break-after: avoid;
             }
-            
+
             .paragraph {
                 orphans: 3;
                 widows: 3;
             }
-            
+
             /* 确保重要内容不被分页 */
             .signature-section {
                 page-break-inside: avoid;
             }
         }
-        
+
         .print-btn {
             position: fixed;
             top: 20px;
@@ -582,16 +643,16 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             transition: all 0.3s ease;
         }
-        
+
         .print-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(0,0,0,0.3);
         }
-        
+
         .print-btn:active {
             transform: translateY(0);
         }
-        
+
         /* 优化中文字体渲染 */
         .content, .paragraph, .section-title, .sub-title, .numbered-item {
             font-variant-east-asian: traditional;
@@ -603,14 +664,12 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
     <button class="print-btn no-print" onclick="window.print()">
         📄 打印/保存为PDF
     </button>
-    
+
     <div class="document">
         <h1>${title}</h1>
-        <div class="content">
-            ${formattedContent}
-        </div>
+        <div class="content" id="md-content">${htmlBody}</div>
     </div>
-    
+
     <script>
         // 页面加载完成后的处理
         window.onload = function() {
@@ -619,7 +678,10 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
             if (printBtn) {
                 printBtn.focus();
             }
-            
+
+            // 注：某些浏览器会阻止 window.open 后立即同步写入渲染，这里主动触发一次重绘
+
+
             // 优化字体加载
             if (document.fonts) {
                 document.fonts.ready.then(() => {
@@ -627,7 +689,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                 });
             }
         }
-        
+
         // 键盘快捷键
         document.addEventListener('keydown', function(e) {
             if (e.ctrlKey && e.key === 'p') {
@@ -638,12 +700,12 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                 window.close();
             }
         });
-        
+
         // 打印前的处理
         window.addEventListener('beforeprint', function() {
             document.title = '${title} - 准备打印';
         });
-        
+
         // 打印后的处理
         window.addEventListener('afterprint', function() {
             document.title = '${title}';
@@ -654,67 +716,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
         win.document.close();
     };
 
-    // 富文本格式化函数
-    const formatDocumentContent = (content: string) => {
-        if (!content) return '';
-
-        return content
-            // HTML转义
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-
-            // 格式化文书标题（居中加粗）
-            .replace(/^([^\n]*(?:起诉状|答辩状|上诉状|反诉状|协议书|清单)[^\n]*)/gm,
-                '<h1 class="document-title">$1</h1>')
-
-            // 格式化当事人信息部分
-            .replace(/^(原告|被告|上诉人|被上诉人|申请人|被申请人|甲方|乙方)：([^\n]+)/gm,
-                '<div class="party-info"><strong class="party-label">$1：</strong><span class="party-details">$2</span></div>')
-
-            // 格式化主要章节标题（一、二、三、等）
-            .replace(/^([一二三四五六七八九十]+、[^\n]+)/gm,
-                '<h2 class="section-title">$1</h2>')
-
-            // 格式化子章节标题（（一）（二）等）
-            .replace(/^（([一二三四五六七八九十]+)）([^\n]+)/gm,
-                '<h3 class="subsection-title">（$1）$2</h3>')
-
-            // 格式化编号列表（1. 2. 3.等）
-            .replace(/^(\d+\.[^\n]+)/gm,
-                '<div class="numbered-item">$1</div>')
-
-            // 格式化法条引用
-            .replace(/(《[^》]+》[^，。；]*条[^，。；]*)/g,
-                '<span class="legal-reference">$1</span>')
-
-            // 格式化金额
-            .replace(/(人民币\s*[\d,，]+(?:\.\d+)?(?:\s*元|万元|亿元)?)/g,
-                '<span class="amount">$1</span>')
-
-            // 格式化日期
-            .replace(/(\d{4}年\d{1,2}月\d{1,2}日)/g,
-                '<span class="date">$1</span>')
-
-            // 格式化"此致"和法院名称
-            .replace(/^(此致)$/gm, '<div class="closing">$1</div>')
-            .replace(/^([^\n]*人民法院[^\n]*)$/gm, '<div class="court-name">$1</div>')
-
-            // 格式化签名和日期部分
-            .replace(/^(起诉人|答辩人|上诉人|申请人|代理人)：([^\n]+)$/gm,
-                '<div class="signature-line"><span class="signature-label">$1：</span><span class="signature-name">$2</span></div>')
-            .replace(/^(日期：[^\n]+)$/gm, '<div class="signature-date">$1</div>')
-
-            // 处理段落
-            .replace(/\n\n+/g, '</p><p class="paragraph">')
-            .replace(/\n/g, '<br>')
-            .replace(/^/, '<p class="paragraph">')
-            .replace(/$/, '</p>')
-
-            // 清理空段落
-            .replace(/<p class="paragraph"><\/p>/g, '')
-            .replace(/<p class="paragraph"><br><\/p>/g, '');
-    };
+    // 已上移至 exportToPDF 之前定义，避免重复声明
 
     return (
         <>
@@ -726,7 +728,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                     line-height: 1.8;
                     color: #1a1a1a;
                 }
-                
+
                 .document-title {
                     text-align: center;
                     font-size: 1.5rem;
@@ -735,23 +737,23 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                     padding-bottom: 0.5rem;
                     border-bottom: 2px solid #333;
                 }
-                
+
                 .party-info {
                     margin: 0.5rem 0;
                     padding: 0.5rem 0;
                 }
-                
+
                 .party-label {
                     font-weight: bold;
                     color: #2563eb;
                     min-width: 4rem;
                     display: inline-block;
                 }
-                
+
                 .party-details {
                     margin-left: 0.5rem;
                 }
-                
+
                 .section-title {
                     font-size: 1.1rem;
                     font-weight: bold;
@@ -760,7 +762,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                     border-left: 4px solid #3b82f6;
                     padding-left: 0.75rem;
                 }
-                
+
                 .subsection-title {
                     font-size: 1rem;
                     font-weight: 600;
@@ -768,13 +770,13 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                     color: #1e40af;
                     text-indent: 1rem;
                 }
-                
+
                 .numbered-item {
                     margin: 0.5rem 0;
                     text-indent: 2rem;
                     line-height: 1.6;
                 }
-                
+
                 .legal-reference {
                     background-color: #fef3c7;
                     color: #92400e;
@@ -782,7 +784,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                     border-radius: 0.25rem;
                     font-weight: 500;
                 }
-                
+
                 .amount {
                     background-color: #dcfce7;
                     color: #166534;
@@ -790,7 +792,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                     border-radius: 0.25rem;
                     font-weight: 600;
                 }
-                
+
                 .date {
                     background-color: #e0e7ff;
                     color: #3730a3;
@@ -798,50 +800,50 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                     border-radius: 0.25rem;
                     font-weight: 500;
                 }
-                
+
                 .closing {
                     margin-top: 2rem;
                     text-align: left;
                     font-weight: 500;
                 }
-                
+
                 .court-name {
                     margin: 0.5rem 0;
                     font-weight: 600;
                     color: #1e40af;
                 }
-                
+
                 .signature-line {
                     margin: 1rem 0;
                     text-align: right;
                 }
-                
+
                 .signature-label {
                     font-weight: 500;
                 }
-                
+
                 .signature-name {
                     margin-left: 1rem;
                     font-weight: 600;
                 }
-                
+
                 .signature-date {
                     margin: 1rem 0;
                     text-align: right;
                     font-weight: 500;
                 }
-                
+
                 .paragraph {
                     margin: 1rem 0;
                     text-indent: 2rem;
                     text-align: justify;
                     line-height: 1.8;
                 }
-                
+
                 .paragraph:first-child {
                     margin-top: 0;
                 }
-                
+
                 .paragraph:last-child {
                     margin-bottom: 0;
                 }
@@ -870,12 +872,12 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                                     }`}
                             >
                                 {selectedTemplate === template.id && (
-                                    <div className="absolute top-2 right-2">
-                                        <Check className="w-4 h-4 text-green-600" />
+                                    <div className="absolute top-2 right-2 text-[10px] text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
+                                        已选
                                     </div>
                                 )}
 
-                                <div className="text-2xl mb-2">{template.icon}</div>
+                                {/* 移除emoji图标，纯文字风格更简洁 */}
                                 <h4 className="font-medium text-gray-800 text-sm mb-1">{template.name}</h4>
                                 <p className="text-xs text-gray-600 mb-3 line-clamp-2">{template.description}</p>
 
@@ -899,8 +901,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                                         {template.difficulty}
                                     </span>
                                     <div className="flex items-center text-gray-500">
-                                        <Clock className="w-3 h-3 mr-1" />
-                                        <span>{template.time}</span>
+                                        <span className="text-[11px]">耗时约 {template.time}</span>
                                     </div>
                                 </div>
                             </button>
@@ -973,7 +974,45 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                                 />
                             </div>
 
-                            {/* 案件详情输入 */}
+                                {/* 高级生成选项 */}
+                                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                                    <label className="flex items-center gap-2">
+                                        <input type="checkbox" checked={adv.citeLaw}
+                                            onChange={(e)=>setAdv(v=>({...v, citeLaw: e.target.checked}))} />
+                                        引用法律条文/司法解释
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input type="checkbox" checked={adv.citeCases}
+                                            onChange={(e)=>setAdv(v=>({...v, citeCases: e.target.checked}))} />
+                                        引用典型/指导性案例
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input type="checkbox" checked={adv.includeEvidence}
+                                            onChange={(e)=>setAdv(v=>({...v, includeEvidence: e.target.checked}))} />
+                                        生成证据清单章节
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-gray-600">语言风格</span>
+                                        <select className="border rounded px-2 py-1" value={adv.tone} onChange={(e)=>setAdv(v=>({...v, tone: e.target.value}))}>
+                                            <option value="正式">正式</option>
+                                            <option value="稳健">稳健</option>
+                                            <option value="通俗">通俗</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* 类型专项编写指引 */}
+                                <div className="mt-2 text-xs text-gray-600 bg-amber-50 border border-amber-200 p-2 rounded">
+                                    <div className="font-medium text-amber-700 mb-1">编写指引（按案件类型）</div>
+                                    {(() => {
+                                        const tips: string[] = getCaseTypeGuidance(documentInfo.case_type);
+                                        return tips?.length ? (
+                                            <ul className="list-disc list-inside space-y-0.5">
+                                                {tips.map((t: string, i: number) => <li key={i}>{t}</li>)}
+                                            </ul>
+                                        ) : <div className="opacity-70">根据案件类型选择不同要素，系统会给出专项提示</div>;
+                                    })()}
+                                </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">
                                     案件详情 <span className="text-purple-600">*</span>
@@ -1006,7 +1045,6 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                                     </>
                                 ) : (
                                     <>
-                                        <FileText className="w-4 h-4" />
                                         <span className="text-sm">生成文书</span>
                                     </>
                                 )}
@@ -1024,13 +1062,39 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                                 <h3 className="font-semibold text-gray-800 text-sm">
                                     📄 {templates.find(t => t.id === selectedTemplate)?.name} - 专业编辑器
                                 </h3>
-                                <button
-                                    onClick={exportToPDF}
-                                    className="flex items-center space-x-1 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors text-sm"
-                                >
-                                    <Download className="w-3 h-3" />
-                                    <span>导出PDF</span>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => {
+                                            // 同步缓存到 sessionStorage 供结果页读取
+                                            const tname = templates.find(t => t.id === selectedTemplate)?.name || '法律文书';
+                                            sessionStorage.setItem('doc_title', tname);
+                                            sessionStorage.setItem('doc_content', documentContent || '');
+                                            sessionStorage.setItem('doc_template_id', selectedTemplate);
+                                            sessionStorage.setItem('doc_case_type', documentInfo.case_type || '');
+                                            window.location.href = '/documents/result';
+                                        }}
+                                        className="flex items-center space-x-1 bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                                    >
+                                        <span>查看完整页面</span>
+                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={exportToPDF}
+                                            className="flex items-center space-x-1 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg绿色-700 transition-colors text-sm"
+                                        >
+                                            <span>导出PDF</span>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+    const html = renderToStaticMarkup(<ReactMarkdown remarkPlugins={[remarkGfm]}>{documentContent}</ReactMarkdown>);
+    exportToDocx(templates.find(t => t.id === selectedTemplate)?.name || '法律文书', html || documentContent, { isHtml: !!html });
+  }}
+                                            className="flex items-center space-x-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                                        >
+                                            <span>导出Word</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* 工具栏 */}
@@ -1043,7 +1107,6 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                                             : 'text-gray-600 hover:text-gray-800'
                                             }`}
                                     >
-                                        <Eye className="w-3 h-3" />
                                         <span>预览</span>
                                     </button>
                                     <button
@@ -1053,7 +1116,6 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                                             : 'text-gray-600 hover:text-gray-800'
                                             }`}
                                     >
-                                        <Edit3 className="w-3 h-3" />
                                         <span>编辑</span>
                                     </button>
                                 </div>
@@ -1067,22 +1129,91 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
 
                         {/* 编辑/预览区域 */}
                         <div className="p-4">
+
+                {/* 全屏独立结果页 */}
+                {showResultPage && documentContent && (
+                    <div className="fixed inset-0 bg-white z-50 flex flex-col">
+                        <div className="p-3 border-b flex items-center justify-between">
+                            <div className="font-semibold text-gray-800 text-sm">
+                                📄 {templates.find(t => t.id === selectedTemplate)?.name} - 结果预览
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setShowResultPage(false)} className="px-3 py-1.5 rounded-lg border text-sm">返回</button>
+                                <button onClick={exportToPDF} className="flex items-center space-x-1 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors text-sm">
+                                    <span>导出PDF</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-auto p-4">
+                            <div className="prose prose-sm max-w-4xl mx-auto">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {documentContent}
+                                </ReactMarkdown>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                             {viewMode === 'preview' ? (
-                                /* 富文本预览模式 */
+                                /* 富文本预览模式（使用 ReactMarkdown + GFM，与咨询页保持一致） */
                                 <div className="prose prose-sm max-w-none">
-                                    <div
-                                        className="formatted-document"
-                                        dangerouslySetInnerHTML={{
-                                            __html: formatDocumentContent(documentContent)
+                                    <ReactMarkdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                            a: (p) => <a {...p} target="_blank" rel="noreferrer" className="text-blue-600 underline" />,
+                                            ul: (p) => <ul {...p} className="list-disc list-inside space-y-1" />,
+                                            ol: (p) => <ol {...p} className="list-decimal list-inside space-y-1" />,
+                                            li: (p) => <li {...p} className="leading-relaxed" />,
+                                            blockquote: (p) => <blockquote {...p} className="border-l-4 pl-3 text-gray-600" />,
+                                            code: (p) => <code {...p} className="bg-gray-100 px-1 rounded" />,
+                                            h1: (p) => <h1 {...p} className="text-lg font-semibold" />,
+                                            h2: (p) => <h2 {...p} className="text-base font-semibold" />,
+                                            h3: (p) => <h3 {...p} className="text-sm font-semibold" />
                                         }}
-                                    />
+                                    >
+                                        {documentContent}
+                                    </ReactMarkdown>
                                 </div>
                             ) : (
                                 /* 编辑模式 */
                                 <div className="space-y-3">
                                     <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
-                                        💡 提示：您可以直接编辑文书内容，系统会自动保存您的修改
+                                        💡 提示：您可以直接编辑文书内容，系统会自动保存您的修改。
                                     </div>
+                                    {/* 规范检查与一键补全 */}
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <button
+                                            onClick={() => {
+                                                const report = buildComplianceReport(documentContent, selectedTemplate, { includeEvidence: adv.includeEvidence, citeLaw: adv.citeLaw, caseType: documentInfo.case_type as any });
+                                                setCompliance(report);
+                                            }}
+                                            className="px-2 py-1 rounded border hover:bg-gray-50"
+                                        >
+                                            规范检查
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const report = buildComplianceReport(documentContent, selectedTemplate, { includeEvidence: adv.includeEvidence, citeLaw: adv.citeLaw, caseType: documentInfo.case_type as any });
+                                                const tname = templates.find(t => t.id === selectedTemplate)?.name || '法律文书';
+                                                const fixed = autofillMissingSections(documentContent, report, tname);
+                                                setDocumentContent(fixed);
+                                                setCompliance(report);
+                                            }}
+                                            className="px-2 py-1 rounded border hover:bg-gray-50"
+                                        >
+                                            一键补全缺失章节
+                                        </button>
+                                    </div>
+                                    {Array.isArray(compliance) && (
+                                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {compliance.map((it) => (
+                                                <div key={it.key} className={`text-xs p-2 rounded border ${it.pass ? 'bg-green-50 border-green-200 text-green-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                                                    <div className="font-medium">{it.label}：{it.pass ? '通过' : '建议完善'}</div>
+                                                    {!it.pass && it.suggestion && <div className="mt-1 opacity-80">建议：{it.suggestion}</div>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     <textarea
                                         value={documentContent}
                                         onChange={(e) => setDocumentContent(e.target.value)}
