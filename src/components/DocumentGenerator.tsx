@@ -852,7 +852,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                 {/* 简洁化：移除顶部大标题，使焦点在功能本身 */}
 
                 {/* 模板选择 - 移动端优化的两列网格布局 */}
-                <div className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
                     <h3 className="font-semibold text-gray-800 mb-3 text-sm">选择文书模板</h3>
                     <div className="grid grid-cols-2 gap-3">
                         {templates.map((template) => (
@@ -910,7 +910,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
 
                 {/* 基本信息表单 - 移动端优化 */}
                 {selectedTemplate && (
-                    <div className="bg-white rounded-xl p-4 shadow-sm">
+                    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
                         <h3 className="font-semibold text-gray-800 mb-3 text-sm">
                             📝 {templates.find(t => t.id === selectedTemplate)?.name} - 专业信息录入
                         </h3>
@@ -997,7 +997,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
                             <button
                                 onClick={generateDocument}
                                 disabled={isGenerating}
-                                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-3 px-4 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 px-4 rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-200 disabled:hover:shadow-lg"
                             >
                                 {isGenerating ? (
                                     <>
@@ -1017,7 +1017,7 @@ ${documentInfo.court || '北京市朝阳区人民法院'}
 
                 {/* 专业文书编辑器 */}
                 {documentContent && (
-                    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
                         {/* 编辑器头部 */}
                         <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
                             <div className="flex items-center justify-between">

@@ -185,7 +185,7 @@ JSON格式示例：
       {/* 简洁化：移除页面大标题，减少视觉干扰 */}
 
       {/* 搜索栏 - 移动端优化 */}
-      <div className="bg-white rounded-xl p-4 shadow-sm">
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
@@ -243,7 +243,7 @@ JSON格式示例：
         <button
           onClick={handleSearch}
           disabled={!searchQuery.trim() || isSearching}
-          className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white py-3 px-4 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 px-4 rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-200 disabled:hover:shadow-lg"
         >
           {isSearching ? (
             <>
@@ -263,7 +263,7 @@ JSON格式示例：
       {searchResults.length > 0 && (
         <div className="space-y-3">
           {/* 结果统计 */}
-          <div className="bg-white rounded-xl p-3 shadow-sm">
+          <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-800">
                 找到 {searchResults.length} 条相关法条
@@ -277,7 +277,7 @@ JSON格式示例：
 
           {/* 法条列表 */}
           {searchResults.map((law) => (
-            <div key={law.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div key={law.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
               {/* 法条头部 */}
               <div className="p-4 border-b border-gray-100">
                 <div className="flex items-start justify-between mb-2">
