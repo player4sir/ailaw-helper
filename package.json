@@ -9,9 +9,12 @@
     "dev:server": "node server/index.mjs",
     "dev:all": "concurrently \"npm:dev:server\" \"npm:dev\"",
     "build": "vite build",
+    "build:cf": "npm run build && npm run copy-functions",
+    "copy-functions": "cp -r functions dist/ || xcopy functions dist\\functions /E /I",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check-env": "node check-env.mjs"
+    "check-env": "node check-env.mjs",
+    "deploy": "npm run build:cf"
   },
   "dependencies": {
     "docx": "^8.5.0",
