@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Sparkles, Brain, ShieldCheck, Square, Clipboard, Trash2, Bot, User, RotateCcw, Copy } from 'lucide-react';
+
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatStream, type ChatMessage } from '../lib/aiClient';
@@ -116,20 +116,18 @@ const LegalConsultation: React.FC = () => {
       <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2 text-gray-700">
-            <Brain className="w-5 h-5 text-blue-600" />
             <div className="font-medium">AI 法律咨询</div>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={handleCopyAll} title="复制对话" className="p-1.5 rounded hover:bg-gray-100 text-gray-600">
-              <Clipboard className="w-4 h-4" />
+            <button onClick={handleCopyAll} title="复制对话" className="px-2 py-1 rounded hover:bg-gray-100 text-gray-600 text-xs">
+              复制
             </button>
-            <button onClick={handleClear} title="清空会话" className="p-1.5 rounded hover:bg-gray-100 text-gray-600">
-              <Trash2 className="w-4 h-4" />
+            <button onClick={handleClear} title="清空会话" className="px-2 py-1 rounded hover:bg-gray-100 text-gray-600 text-xs">
+              清空
             </button>
           </div>
         </div>
         <p className="mt-2 text-sm text-gray-500 flex items-start space-x-2">
-          <ShieldCheck className="w-4 h-4 mt-0.5 text-green-600" />
           <span>提示：AI 仅供参考，复杂或高风险情形请咨询执业律师。</span>
         </p>
       </div>
@@ -149,7 +147,7 @@ const LegalConsultation: React.FC = () => {
                 {/* 头像 */}
                 {m.role === 'assistant' && (
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                    <Bot className="w-4 h-4" />
+                    <span className="text-xs">AI</span>
                   </div>
                 )}
                 <div className={`${m.role === 'user' ? 'order-2' : ''} max-w-[85%]`}>
@@ -184,7 +182,7 @@ const LegalConsultation: React.FC = () => {
                           await navigator.clipboard.writeText(m.content);
                         }}
                       >
-                        <Copy className="w-3 h-3" /> 复制
+                        复制
                       </button>
                       {idx === messages.filter(x => x.role !== 'system').length - 1 && !streaming && (
                         <button
@@ -195,7 +193,7 @@ const LegalConsultation: React.FC = () => {
                             handleSend();
                           }}
                         >
-                          <RotateCcw className="w-3 h-3" /> 重新生成
+                          重新生成
                         </button>
                       )}
                     </div>
@@ -203,7 +201,7 @@ const LegalConsultation: React.FC = () => {
                 </div>
                 {m.role === 'user' && (
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center">
-                    <User className="w-4 h-4" />
+                    <span className="text-xs">我</span>
                   </div>
                 )}
               </div>
@@ -234,7 +232,6 @@ const LegalConsultation: React.FC = () => {
               onClick={handleStop}
               className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-white bg-gray-500 hover:bg-gray-600 transition-colors"
             >
-              <Square className="w-4 h-4" />
               <span>停止生成</span>
             </button>
           ) : (
@@ -243,7 +240,6 @@ const LegalConsultation: React.FC = () => {
               disabled={!input.trim()}
               className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-white ${!input.trim() ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'} transition-colors`}
             >
-              <Send className="w-4 h-4" />
               <span>发送</span>
             </button>
           )}

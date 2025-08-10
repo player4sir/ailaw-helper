@@ -1,0 +1,8 @@
+name = "ailaw-helper"
+compatibility_date = "2024-01-01"
+
+[env.production]
+name = "ailaw-helper"
+
+# 环境变量配置 (需要在 Cloudflare Dashboard 中设置)
+# SILICONFLOW_API_KEY = "your_api_key_here"

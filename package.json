@@ -9,11 +9,15 @@
     "dev:server": "node server/index.mjs",
     "dev:all": "concurrently \"npm:dev:server\" \"npm:dev\"",
     "build": "vite build",
+    "build:cf": "npm run build && npm run copy-functions",
+    "copy-functions": "cp -r functions dist/ || xcopy functions dist\\functions /E /I",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check-env": "node check-env.mjs"
+    "check-env": "node check-env.mjs",
+    "deploy": "npm run build:cf"
   },
   "dependencies": {
+    "docx": "^8.5.0",
     "dotenv": "^17.2.1",
     "express": "^4.21.2",
     "lucide-react": "^0.344.0",
@@ -21,6 +25,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.30.1",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
